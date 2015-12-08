@@ -11,6 +11,7 @@ var PacmanGame = function(game) {
   this.scoreText = null;
 
   this.pacman = null;
+  this.pacman2 = null;
   this.clyde = null;
   this.pinky = null;
   this.inky = null;
@@ -18,6 +19,8 @@ var PacmanGame = function(game) {
   this.isInkyOut = false;
   this.isClydeOut = false;
   this.ghosts = [];
+
+  this.player = null;
 
   this.safetile = 14;
   this.gridsize = 16;
@@ -110,12 +113,19 @@ PacmanGame.prototype = {
       socket = io();
 
     socket.on('game state', function(state) {
-      console.log(JSON.stringify(state.pacman, null, 4));
-      _this.pacman.turnPoint.x = state.pacman.x;
-      _this.pacman.turnPoint.y = state.pacman.y;
-      _this.pacman.sprite.x = state.pacman.x;
-      _this.pacman.sprite.y = state.pacman.y;
-      _this.pacman.turning = state.pacman.direction;      
+      console.log(JSON.stringify(state, null, 4));
+      var character = _this[state.character.name];
+      character.turnPoint.x = state.pacman.x;
+      character.turnPoint.y = state.pacman.y;
+      character.sprite.x = state.pacman.x;
+      character.sprite.y = state.pacman.y;
+      character.turning = state.pacman.direction;   
+
+      if (state.character.id === socket.id) {
+        _this.player = _this[state.character.name];
+        _this.player.name = state.character.name;
+        _this.player.lastPacketSentAt = performance.now();
+      }
     });
 
     this.socket = socket;
@@ -143,6 +153,8 @@ PacmanGame.prototype = {
 
     // Our hero
     this.pacman = new Pacman(this, "pacman");
+    this.pacman2 = new Pacman(this, "pacman");
+    this.player = this.pacman;
 
     // Score and debug texts
     this.scoreText = game.add.text(8, 272, "Score: " + this.score, {
@@ -168,11 +180,12 @@ PacmanGame.prototype = {
     //this.changeModeTimer = this.time.time + this.TIME_MODES[this.currentMode].time;
 
     // Ghosts
-    // this.blinky = new Ghost(this, "ghosts", "blinky", {x:13, y:11}, Phaser.RIGHT);
+    this.blinky = new Ghost(this, "ghosts", "blinky", {x:13, y:11}, Phaser.RIGHT);
     // this.pinky = new Ghost(this, "ghosts", "pinky", {x:15, y:14}, Phaser.LEFT);
     // this.inky = new Ghost(this, "ghosts", "inky", {x:14, y:14}, Phaser.RIGHT);
     // this.clyde = new Ghost(this, "ghosts", "clyde", {x:17, y:14}, Phaser.LEFT);
     //this.ghosts.push(this.clyde, this.pinky, this.inky, this.blinky);
+    this.ghosts.push(this.blinky);
 
     // this.sendExitOrder(this.pinky);
     this.game.stage.disableVisibilityChange = true;
@@ -180,7 +193,7 @@ PacmanGame.prototype = {
   },
 
   checkKeys: function() {
-    this.pacman.checkKeys(this.cursors);
+    this.player.checkKeys(this.cursors);
 
     if (this.lastKeyPressed < this.time.time) {
       if (this.cursors.d.isDown) {
@@ -248,13 +261,8 @@ PacmanGame.prototype = {
     } else {
       this.debugText.text = "";
     }
-    if (this.ORIGINAL_OVERFLOW_ERROR_ON) {
-      this.overflowText.text = "Overflow ON";
-    } else {
-      this.overflowText.text = "";
-    }
 
-    this.debugText.text = "Pacman: " + this.pacman.sprite.x + ' ' + parseInt(this.pacman.sprite.y) + ' ' + this.pacman.marker;
+    this.debugText.text = this.player.name + ": " + parseInt(this.player.sprite.x) + ' ' + parseInt(this.player.sprite.y) + ' ' + this.player.getPosition();
 
     if (!this.pacman.isDead) {
       for (var i = 0; i < this.ghosts.length; i++) {
@@ -296,6 +304,7 @@ PacmanGame.prototype = {
     }
 
     this.pacman.update();
+    this.pacman2.update();
     this.updateGhosts();
 
     this.checkKeys();

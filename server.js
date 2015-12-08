@@ -4,6 +4,12 @@ var http = require('http').Server(app);
 var io = require('socket.io')(http);
 var pacmanMap = require('./assets/pacman-map.json').layers[0].data;
 
+var debugLines = {
+  'blinky': 2,
+  'pacman': 5,
+  'pacman2': 8,
+}
+
 var Phaser = {
   NONE: 0,
   LEFT: 1,
@@ -16,10 +22,10 @@ var Phaser = {
   }
 }
 
-var Server = function() {
+var Server = function(socket, characters, characterName) {
   this.time = process.hrtime();
 
-  this.speed = 150;
+  this.speed = characterName === 'Blinky' ? 125 : 150;
   this.isDead = false;
 
   this.gridsize = 16; // this.game.gridsize;
@@ -35,6 +41,13 @@ var Server = function() {
   this.current = Phaser.NONE;
   this.turning = Phaser.NONE;
   this.want2go = Phaser.NONE;
+
+  this.sentY = null;
+  this.sentX = null;
+  this.sentDirection = null;
+  this.userSocket = socket;
+  this.characters = characters;
+  this.characterName = characterName;
 
   // Phaser structures
   this.game = {
@@ -106,7 +119,7 @@ Server.prototype.move = function(direction) {
   }
 
   this.current = direction;
-  sendGameState();
+  this.sendGameState();
 };
 
 var time = process.hrtime(),
@@ -114,70 +127,11 @@ var time = process.hrtime(),
   x = 104,
   direction = 4,
   speed = 150,
-  sentY, sentX, sentDirection,
   directionEnum = ['None', 'Left', 'Right', 'Up', 'Down'],
   leftTilePassable = false,
   rightTilePassable = false,
   topTilePassable = false,
   bottomTilePassable = false;
-
-Server.prototype.updateOld = function() {
-  var diff = process.hrtime(time);
-  time = process.hrtime();
-  diffInMs = parseInt((diff[0] * 1e9 + diff[1]) / 1e6);
-  //console.log(diffInMs);
-
-  var currentXTile = nextXTile = Math.round((x - 0.1) / 16),
-    currentYTile = nextYTile = Math.round((y - 0.1) / 16);
-
-  if (direction == 4) { // Phaser.DOWN
-    nextYTile = currentYTile + 1;
-    yVelocity = speed;
-  } else if (direction == 3) { // Phaser.UP
-    nextYTile = currentYTile - 1;
-    yVelocity = -speed;
-  } else if (direction == 2) { // Phaser.RIGHT
-    nextXTile = currentXTile + 1;
-    xVelocity = speed;
-  } else if (direction == 1) { // Phaser.LEFT
-    nextXTile = currentXTile - 1;
-    xVelocity = -speed;
-  }
-
-  var nextTile = pacmanMap[nextYTile * 28 + nextXTile],
-    nextTilePassable = ([7, 40].indexOf(nextTile) !== -1),
-    leftTile = pacmanMap[currentYTile * 28 + currentXTile - 1],
-    rightTile = pacmanMap[currentYTile * 28 + currentXTile + 1],
-    topTile = pacmanMap[(currentYTile - 1) * 28 + currentXTile],
-    bottomTile = pacmanMap[(currentYTile + 1) * 28 + currentXTile];
-
-  leftTilePassable = ([7, 40].indexOf(leftTile) !== -1),
-    rightTilePassable = ([7, 40].indexOf(rightTile) !== -1),
-    topTilePassable = ([7, 40].indexOf(topTile) !== -1),
-    bottomTilePassable = ([7, 40].indexOf(bottomTile) !== -1);
-
-
-  if (nextTilePassable) {
-    y += Math.round(yVelocity / 1000 * diffInMs);
-    x += Math.round(xVelocity / 1000 * diffInMs);
-  } else {
-    x = Math.round((x - 0.1) / 16) * 16 + 8;
-    y = Math.round((y - 0.1) / 16) * 16 + 8;
-  }
-  // if (y > 420) {
-  //  y = 20;
-  // }
-
-  logOnLine(1, 'tile y:' + nextYTile + ' x:' + nextXTile + ' ' + nextTilePassable + ' ' + nextTile);
-  logOnLine(2, 'coords y:' + y + ' x:' + x + ' ' + nextTilePassable + ' ' + nextTile);
-
-  logOnLine(5, '\t' + topTilePassable);
-  logOnLine(6, leftTilePassable + '\t\t' + rightTilePassable);
-  logOnLine(7, '\t' + bottomTilePassable);
-
-  // pacman is moving at 150px per second
-
-}
 
 function snapToFloor(input, gap) {
   return gap * Math.floor(input / gap);
@@ -186,7 +140,7 @@ function snapToFloor(input, gap) {
 Server.prototype.update = function() {
   var diff = process.hrtime(this.time),
     diffInMs = parseInt((diff[0] * 1e9 + diff[1]) / 1e6);
-    //diffInMs = 53;
+  //diffInMs = 53;
 
   this.time = process.hrtime();
 
@@ -215,7 +169,7 @@ Server.prototype.update = function() {
       this.sprite.y = Math.round((this.sprite.y - 0.1) / 16) * 16 + 8;
     }
 
-    logOnLine(2, 'coords y:' + this.sprite.y + ' x:' + this.sprite.x + ' p:' + nextTilePassable + ' xtile:' + 
+    logOnLine(debugLines[this.characterName], this.characterName + ': coords y:' + this.sprite.y + ' x:' + this.sprite.x + ' p:' + nextTilePassable + ' xtile:' +
       nextXTile + ' ytile:' + nextYTile + ' nextTileId:' + nextTile + ' vel.x:' + this.sprite.body.velocity.x +
       ' vel.y:' + this.sprite.body.velocity.y + ' turning:' + this.turning +
       ' turnpoint(x:' + this.turnPoint.x + ', y:' + this.turnPoint.y + ')');
@@ -227,7 +181,7 @@ Server.prototype.update = function() {
     this.marker.x = snapToFloor(Math.floor(this.sprite.x), this.gridsize) / this.gridsize;
     this.marker.y = snapToFloor(Math.floor(this.sprite.y), this.gridsize) / this.gridsize;
 
-    logOnLine(3, 'marker x:' + this.marker.x + ' y:' + this.marker.y + ' want2go:' + directionEnum[this.want2go]);
+    //logOnLine(3, 'marker x:' + this.marker.x + ' y:' + this.marker.y + ' want2go:' + directionEnum[this.want2go]);
 
     if (this.marker.x < 0) {
       this.sprite.x = this.game.map.widthInPixels - 1;
@@ -291,24 +245,28 @@ function logOnLine(line, message) {
   console.log(message);
 }
 
-function sendGameState(force) {
-  var x = serverGame.sprite.x,
-    y = serverGame.sprite.y,
-    direction = serverGame.current,
-    alreadySent = ((sentX == x) && (sentY == y) && (sentDirection == direction));
+Server.prototype.sendGameState = function(force) {
+  var x = this.sprite.x,
+    y = this.sprite.y,
+    direction = this.current,
+    alreadySent = ((this.sentX == x) && (this.sentY == y) && (this.sentDirection == direction));
 
-  if ((userSocket && !alreadySent) || force) {
+  if ((this.userSocket && !alreadySent) || force) {
     logOnLine(5, 'sent game state y:' + y + ' x:' + x + ' direction:' + directionEnum[direction])
     io.emit('game state', {
       pacman: {
         x: x,
         y: y,
         direction: direction
+      },
+      character: {
+        name: this.characterName,
+        id: this.userSocket.id
       }
     })
-    sentX = x;
-    sentY = y;
-    sentDirection = serverGame.current;
+    this.sentX = x;
+    this.sentY = y;
+    this.sentDirection = this.current;
   }
 }
 
@@ -324,27 +282,40 @@ http.listen(3000, function() {
 
 app.use(express.static('.'));
 
-var userSocket = null,
-  serverGame = new Server();
+var characters = {},
+  charPool = ['blinky', 'pacman', 'pacman2'];
 
 io.on('connection', function(socket) {
-  console.log('a user connected ' + socket.id);
+  characters[socket.id] = new Server(socket, characters, charPool.pop());
+  var serverGame = characters[socket.id];
+  // 6 updates per second, every 25 pixels (150/6=25)
+  // 1000/50 = 20 updates per second, every 7.5 pixels (150/20=7.5)
+  setInterval(serverGame.update.bind(serverGame), 53);
+  serverGame.move(Phaser.RIGHT);
+
+  logActiveClientCount();
 
   socket.on('move', function(wantedDirection) {
+    var character = characters[socket.id];
+    logOnLine(debugLines[character.characterName] + 1, 'new direction: ' + directionEnum[wantedDirection] + ' x:' + character.sprite.x + ' y:' + character.sprite.y);
+    character.want2go = wantedDirection;
+    character.checkDirection.bind(character)(character.want2go);
+  });
 
-    serverGame.update();
-    logOnLine(4, 'new direction: ' + directionEnum[wantedDirection] + ' l:' + leftTilePassable + ' t:' + topTilePassable + ' b:' + bottomTilePassable + ' r:' + rightTilePassable + ' x:' + x + ' y:' + y);
-    serverGame.want2go = wantedDirection;
-    serverGame.checkDirection.bind(serverGame)(serverGame.want2go);
-  })
+  socket.on('disconnect', function() {
+    charPool.push(characters[socket.id].characterName);
+    delete characters[socket.id];
+    logActiveClientCount();
+  });
 
-  userSocket = socket;
-  sendGameState(true);
+  serverGame.sendGameState(true);
 });
 
-// 6 updates per second, every 25 pixels (150/6=25)
-// 1000/50 = 20 updates per second, every 7.5 pixels (150/20=7.5)
-setInterval(serverGame.update.bind(serverGame), 53);
-serverGame.move(Phaser.RIGHT);
+function logActiveClientCount() {
+  logOnLine(9, 'active connections: ' + Object.keys(characters).length);
+}
+
+
+
 
 //setInterval(clientUpdateLoop, 200);

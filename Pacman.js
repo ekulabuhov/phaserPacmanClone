@@ -71,7 +71,8 @@ Pacman.prototype.move = function(direction) {
   if (this.current !== direction) {
     this.current = direction;
 
-    if (this.game.socket) {
+    // we only want to send packets for our own char
+    if (this.game.socket && this.game.player === this) {
       this.game.socket.emit('move', this.current);  
     }
   }  
