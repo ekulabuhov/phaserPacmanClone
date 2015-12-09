@@ -68,7 +68,7 @@ var PacmanGame = function(game) {
   this.changeModeTimer = 0;
   this.remainingTime = 0;
   this.currentMode = 0;
-  this.isPaused = false;
+  this.isFrightenedMode = false;
   this.FRIGHTENED_MODE_TIME = 7000;
 
   this.ORIGINAL_OVERFLOW_ERROR_ON = true;
@@ -120,6 +120,13 @@ PacmanGame.prototype = {
       character.sprite.x = state.pacman.x;
       character.sprite.y = state.pacman.y;
       character.turning = state.pacman.direction;   
+
+      // hack-ish, checking for the first packet
+      if (!state.character.id) {
+        _this.dots.callAll('revive');
+        _this.pills.callAll('revive');
+        _this.score = 0;
+      }
 
       if (state.character.id === socket.id) {
         _this.player = _this[state.character.name];
@@ -174,10 +181,10 @@ PacmanGame.prototype = {
     this.cursors["d"] = this.input.keyboard.addKey(Phaser.Keyboard.D);
     this.cursors["b"] = this.input.keyboard.addKey(Phaser.Keyboard.B);
 
-    //this.game.time.events.add(1250, this.sendExitOrder, this);
-    //this.game.time.events.add(7000, this.sendAttackOrder, this);
+    // this.game.time.events.add(1250, this.sendExitOrder, this);
+    // this.game.time.events.add(7000, this.sendAttackOrder, this);
 
-    //this.changeModeTimer = this.time.time + this.TIME_MODES[this.currentMode].time;
+    this.changeModeTimer = this.time.time + this.TIME_MODES[this.currentMode].time;
 
     // Ghosts
     this.blinky = new Ghost(this, "ghosts", "blinky", {x:13, y:11}, Phaser.RIGHT);
@@ -217,7 +224,7 @@ PacmanGame.prototype = {
   },
 
   dogEatsDog: function(pacman, ghost) {
-    if (this.isPaused) {
+    if (this.isFrightenedMode) {
       this[ghost.name].mode = this[ghost.name].RETURNING_HOME;
       this[ghost.name].ghostDestination = new Phaser.Point(14 * this.gridsize, 14 * this.gridsize);
       this[ghost.name].resetSafeTiles();
@@ -228,7 +235,7 @@ PacmanGame.prototype = {
   },
 
   getCurrentMode: function() {
-    if (!this.isPaused) {
+    if (!this.isFrightenedMode) {
       if (this.TIME_MODES[this.currentMode].mode === "scatter") {
         return "scatter";
       } else {
@@ -240,7 +247,7 @@ PacmanGame.prototype = {
   },
 
   gimeMeExitOrder: function(ghost) {
-    this.game.time.events.add(Math.random() * 3000, this.sendExitOrder, this, ghost);
+    this.game.time.events.add(3000, this.sendExitOrder, this, ghost);
   },
 
   killPacman: function() {
@@ -262,12 +269,12 @@ PacmanGame.prototype = {
       this.debugText.text = "";
     }
 
-    this.debugText.text = this.player.name + ": " + parseInt(this.player.sprite.x) + ' ' + parseInt(this.player.sprite.y) + ' ' + this.player.getPosition();
+    this.debugText.text = this.player.name + ": " + parseInt(this.player.sprite.x) + ' ' + parseInt(this.player.sprite.y) + ' ' + this.player.marker;
 
     if (!this.pacman.isDead) {
       for (var i = 0; i < this.ghosts.length; i++) {
         if (this.ghosts[i].mode !== this.ghosts[i].RETURNING_HOME) {
-          this.physics.arcade.overlap(this.pacman.sprite, this.ghosts[i].ghost, this.dogEatsDog, null, this);
+          this.physics.arcade.overlap(this.pacman.sprite, this.ghosts[i].sprite, this.dogEatsDog, null, this);
         }
       }
 
@@ -281,9 +288,16 @@ PacmanGame.prototype = {
         this.sendExitOrder(this.clyde);
       }
 
-      // if (this.changeModeTimer !== -1 && !this.isPaused && this.changeModeTimer < this.time.time) {
-      //   this.currentMode++;
-      //   this.changeModeTimer = this.time.time + this.TIME_MODES[this.currentMode].time;
+      // if (this.changeModeTimer !== -1 && !this.isFrightenedMode && this.changeModeTimer < this.time.time) {
+      //   this.currentMode = Math.min(7, ++this.currentMode);
+      //   var modeDuration = this.TIME_MODES[this.currentMode].time;
+
+      //   if (modeDuration > 0) {
+      //     this.changeModeTimer = this.time.time + this.TIME_MODES[this.currentMode].time;
+      //   } else {
+      //     this.changeModeTimer = -1;  
+      //   }
+
       //   if (this.TIME_MODES[this.currentMode].mode === "chase") {
       //     this.sendAttackOrder();
       //   } else {
@@ -291,16 +305,16 @@ PacmanGame.prototype = {
       //   }
       //   console.log("new mode:", this.TIME_MODES[this.currentMode].mode, this.TIME_MODES[this.currentMode].time);
       // }
-      // if (this.isPaused && this.changeModeTimer < this.time.time) {
-      //   this.changeModeTimer = this.time.time + this.remainingTime;
-      //   this.isPaused = false;
-      //   if (this.TIME_MODES[this.currentMode].mode === "chase") {
-      //     this.sendAttackOrder();
-      //   } else {
-      //     this.sendScatterOrder();
-      //   }
-      //   console.log("new mode:", this.TIME_MODES[this.currentMode].mode, this.TIME_MODES[this.currentMode].time);
-      // }
+      if (this.isFrightenedMode && this.changeModeTimer < this.time.time) {
+        this.changeModeTimer = this.time.time + this.remainingTime;
+        this.isFrightenedMode = false;
+        if (this.TIME_MODES[this.currentMode].mode === "chase") {
+          this.sendAttackOrder();
+        } else {
+          this.sendScatterOrder();
+        }
+        console.log("new mode:", this.TIME_MODES[this.currentMode].mode, this.TIME_MODES[this.currentMode].time);
+      }
     }
 
     this.pacman.update();
@@ -315,12 +329,12 @@ PacmanGame.prototype = {
     for (var i = 0; i < this.ghosts.length; i++) {
       this.ghosts[i].enterFrightenedMode();
     }
-    if (!this.isPaused) {
+    if (!this.isFrightenedMode) {
       this.remainingTime = this.changeModeTimer - this.time.time;
     }
     this.changeModeTimer = this.time.time + this.FRIGHTENED_MODE_TIME;
-    this.isPaused = true;
-    console.log(this.remainingTime);
+    this.isFrightenedMode = true;
+    console.log('frightened mode', this.remainingTime);
   },
 
   isSpecialTile: function(tile) {
@@ -374,7 +388,9 @@ PacmanGame.prototype = {
   },
 
   sendExitOrder: function(ghost) {
-    //ghost.mode = this.clyde.EXIT_HOME;
+    if (ghost) {
+      ghost.mode = Ghost.EXIT_HOME;
+    }
   },
 
   sendScatterOrder: function() {

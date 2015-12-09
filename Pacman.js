@@ -148,6 +148,7 @@ Pacman.prototype.eatDot = function(pacman, dot) {
 
   if (this.game.dots.total === 0) {
     this.game.dots.callAll('revive');
+    this.game.pills.callAll('revive');
   }
 };
 

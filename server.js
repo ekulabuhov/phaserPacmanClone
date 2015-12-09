@@ -1,13 +1,29 @@
+var fs = require('fs');
 var express = require('express');
 var app = express();
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
-var pacmanMap = require('./assets/pacman-map.json').layers[0].data;
+var pacmanMap = JSON.parse(fs.readFileSync('./assets/pacman-map.json', 'utf8')).layers[0].data;
 
 var debugLines = {
   'blinky': 2,
   'pacman': 5,
   'pacman2': 8,
+}
+
+var startingLocations = {
+  'blinky': {
+    x: 13,
+    y: 11
+  },
+  'pacman': {
+    x: 14,
+    y: 17
+  },
+  'pacman2': {
+    x: 14,
+    y: 17
+  }
 }
 
 var Phaser = {
@@ -22,10 +38,17 @@ var Phaser = {
   }
 }
 
-var Server = function(socket, characters, characterName) {
+var Mode = {
+  NONE: 0,
+  RETURNING_HOME: 1
+}
+
+var FRIGHTENED_MODE_TIME = 7000;
+
+var Server = function(socket, characters, name) {
   this.time = process.hrtime();
 
-  this.speed = characterName === 'Blinky' ? 125 : 150;
+  this.speed = name === 'blinky' ? 125 : 150;
   this.isDead = false;
 
   this.gridsize = 16; // this.game.gridsize;
@@ -33,7 +56,7 @@ var Server = function(socket, characters, characterName) {
 
   this.marker = new Phaser.Point();
   this.turnPoint = new Phaser.Point();
-  this.threshold = 12;
+  this.threshold = 16;
 
   this.directions = [null, null, null, null, null];
   this.opposites = [Phaser.NONE, Phaser.RIGHT, Phaser.LEFT, Phaser.DOWN, Phaser.UP];
@@ -47,7 +70,14 @@ var Server = function(socket, characters, characterName) {
   this.sentDirection = null;
   this.userSocket = socket;
   this.characters = characters;
-  this.characterName = characterName;
+  this.name = name;
+
+  this.frightenedMode = false;
+  this.mode = Mode.NONE;
+
+  // 6 updates per second, every 25 pixels (150/6=25)
+  // 1000/50 = 20 updates per second, every 7.5 pixels (150/20=7.5)
+  this.updateTimer = setInterval(this.update.bind(this), 53);
 
   // Phaser structures
   this.game = {
@@ -69,8 +99,8 @@ var Server = function(socket, characters, characterName) {
     }
   }
   this.sprite = {
-    x: (1 * 16) + 8,
-    y: (1 * 16) + 8,
+    x: (startingLocations[name].x * 16) + 8,
+    y: (startingLocations[name].y * 16) + 8,
     body: {
       velocity: {
         x: 0,
@@ -80,8 +110,13 @@ var Server = function(socket, characters, characterName) {
   }
 }
 
+// 7: dots 40: pills, 14: ground, 35,36: ghost bunker
+Server.prototype.tilePassable = function(tileId) {
+  return [7, 40, 14, 35, 36].indexOf(tileId) !== -1
+}
+
 Server.prototype.checkDirection = function(turnTo) {
-  if (this.turning === turnTo || this.directions[turnTo] === null || !([7, 40].indexOf(this.directions[turnTo]) !== -1)) {
+  if (this.turning === turnTo || this.directions[turnTo] === null || !this.tilePassable(this.directions[turnTo])) {
     //  Invalid direction if they're already set to turn that way
     //  Or there is no tile there, or the tile isn't index 1 (a floor tile)
     return;
@@ -122,16 +157,7 @@ Server.prototype.move = function(direction) {
   this.sendGameState();
 };
 
-var time = process.hrtime(),
-  y = 20,
-  x = 104,
-  direction = 4,
-  speed = 150,
-  directionEnum = ['None', 'Left', 'Right', 'Up', 'Down'],
-  leftTilePassable = false,
-  rightTilePassable = false,
-  topTilePassable = false,
-  bottomTilePassable = false;
+var directionEnum = ['None', 'Left', 'Right', 'Up', 'Down'];
 
 function snapToFloor(input, gap) {
   return gap * Math.floor(input / gap);
@@ -148,63 +174,94 @@ Server.prototype.update = function() {
     this.checkDirection(this.want2go);
   }
 
-  if (!this.isDead) {
-    //this.game.physics.arcade.collide(this.sprite, this.game.layer);
-    var nextSpriteX = this.sprite.x + Math.round(this.sprite.body.velocity.x / 1000 * diffInMs),
-      nextSpriteY = this.sprite.y + Math.round(this.sprite.body.velocity.y / 1000 * diffInMs),
-      nextXTile = Math.round((nextSpriteX + this.sprite.body.velocity.x / 18.75 - 0.1) / 16),
-      nextYTile = Math.round((nextSpriteY + this.sprite.body.velocity.y / 18.75 - 0.1) / 16),
-      nextTile = pacmanMap[nextYTile * 28 + nextXTile],
-      // 7 and 40 is ground and dots
-      nextTilePassable = ([7, 40].indexOf(nextTile) !== -1);
-
-    if (nextTilePassable) {
-      this.sprite.x = nextSpriteX;
-      this.sprite.y = nextSpriteY;
-    } else {
-      this.sprite.body.velocity.y = this.sprite.body.velocity.x = 0;
-      //console.log('update1! ' + this.sprite.x + ' tx:' + nextTile);
-      this.sprite.x = Math.round((this.sprite.x - 0.1) / 16) * 16 + 8;
-      //console.log('update2! ' + this.sprite.x);
-      this.sprite.y = Math.round((this.sprite.y - 0.1) / 16) * 16 + 8;
-    }
-
-    logOnLine(debugLines[this.characterName], this.characterName + ': coords y:' + this.sprite.y + ' x:' + this.sprite.x + ' p:' + nextTilePassable + ' xtile:' +
-      nextXTile + ' ytile:' + nextYTile + ' nextTileId:' + nextTile + ' vel.x:' + this.sprite.body.velocity.x +
-      ' vel.y:' + this.sprite.body.velocity.y + ' turning:' + this.turning +
-      ' turnpoint(x:' + this.turnPoint.x + ', y:' + this.turnPoint.y + ')');
-
-
-    //this.game.physics.arcade.overlap(this.sprite, this.game.dots, this.eatDot, null, this);
-    //this.game.physics.arcade.overlap(this.sprite, this.game.pills, this.eatPill, null, this);
-
-    this.marker.x = snapToFloor(Math.floor(this.sprite.x), this.gridsize) / this.gridsize;
-    this.marker.y = snapToFloor(Math.floor(this.sprite.y), this.gridsize) / this.gridsize;
-
-    //logOnLine(3, 'marker x:' + this.marker.x + ' y:' + this.marker.y + ' want2go:' + directionEnum[this.want2go]);
-
-    if (this.marker.x < 0) {
-      this.sprite.x = this.game.map.widthInPixels - 1;
-    }
-    if (this.marker.x >= this.game.map.width) {
-      this.sprite.x = 1;
-    }
-
-    //  Update our grid sensors
-    this.directions[1] = this.game.map.getTileLeft(this.marker.x, this.marker.y);
-    this.directions[2] = this.game.map.getTileRight(this.marker.x, this.marker.y);
-    this.directions[3] = this.game.map.getTileAbove(this.marker.x, this.marker.y);
-    this.directions[4] = this.game.map.getTileBelow(this.marker.x, this.marker.y);
-
-    if (this.turning !== Phaser.NONE) {
-      this.turn();
-    }
-  } else {
+  if (this.isDead) {
     this.move(Phaser.NONE);
     // if (!this.isAnimatingDeath) {
     //   this.sprite.play("death");
     //   this.isAnimatingDeath = true;
     // }
+    return;
+  }
+
+  //this.game.physics.arcade.collide(this.sprite, this.game.layer);
+  var nextSpriteX = this.sprite.x + Math.round(this.sprite.body.velocity.x / 1000 * diffInMs),
+    nextSpriteY = this.sprite.y + Math.round(this.sprite.body.velocity.y / 1000 * diffInMs),
+    nextXTile = Math.round((nextSpriteX + this.sprite.body.velocity.x / 18.75 - 0.1) / 16),
+    nextYTile = Math.round((nextSpriteY + this.sprite.body.velocity.y / 18.75 - 0.1) / 16),
+    nextTile = pacmanMap[nextYTile * 28 + nextXTile],
+    wrapAround = (nextXTile <= 0 || nextXTile >= 28) && nextYTile == 14;
+  nextTilePassable = wrapAround || this.tilePassable(nextTile);
+
+  if (nextTilePassable) {
+    this.sprite.x = nextSpriteX;
+    this.sprite.y = nextSpriteY;
+  } else {
+    this.sprite.body.velocity.y = this.sprite.body.velocity.x = 0;
+    //console.log('update1! ' + this.sprite.x + ' tx:' + nextTile);
+    this.sprite.x = Math.round((this.sprite.x - 0.1) / 16) * 16 + 8;
+    //console.log('update2! ' + this.sprite.x);
+    this.sprite.y = Math.round((this.sprite.y - 0.1) / 16) * 16 + 8;
+  }
+
+  //this.game.physics.arcade.overlap(this.sprite, this.game.dots, this.eatDot, null, this);
+  //this.game.physics.arcade.overlap(this.sprite, this.game.pills, this.eatPill, null, this);
+
+  this.marker.x = snapToFloor(Math.floor(this.sprite.x), this.gridsize) / this.gridsize;
+  this.marker.y = snapToFloor(Math.floor(this.sprite.y), this.gridsize) / this.gridsize;
+
+  // check if we're hitting a pill
+  if (this.name.startsWith('pacman')) {
+    var _this = this;
+    Object.keys(this.characters).forEach(function(socketId) {
+      var character = _this.characters[socketId];
+      if (character.name === 'blinky' && fuzzyEqual(_this.marker.x, character.marker.x, 2) &&
+        fuzzyEqual(_this.marker.y, character.marker.y, 2)) {
+        if (_this.frightenedMode) {
+          character.mode = Mode.RETURNING_HOME;
+          character.sprite.x = 13 * 16 + 8;
+          character.sprite.y = 11 * 16 + 8;
+        }
+      }
+    });
+    // a pill
+    if (nextTile === 40) {
+      // replace pill with emptiness
+      pacmanMap[nextYTile * 28 + nextXTile] = 14;
+      this.frightenedMode = true;
+      setTimeout(function() {
+        _this.frightenedMode = false;
+      }, FRIGHTENED_MODE_TIME);
+    }
+  }
+
+  //logOnLine(3, 'marker x:' + this.marker.x + ' y:' + this.marker.y + ' want2go:' + directionEnum[this.want2go]);
+
+  if (this.marker.x < 0) {
+    this.sprite.x = this.game.map.widthInPixels - 1;
+  }
+  if (this.marker.x >= this.game.map.width) {
+    this.sprite.x = 1;
+  }
+
+  //  Update our grid sensors
+  this.directions[Phaser.LEFT] = this.game.map.getTileLeft(this.marker.x, this.marker.y);
+  this.directions[Phaser.RIGHT] = this.game.map.getTileRight(this.marker.x, this.marker.y);
+  this.directions[Phaser.UP] = this.game.map.getTileAbove(this.marker.x, this.marker.y);
+  this.directions[Phaser.DOWN] = this.game.map.getTileBelow(this.marker.x, this.marker.y);
+
+  logOnLine(debugLines[this.name], this.name + ': coords(x:' + this.sprite.x + ', y:' + this.sprite.y + '), tile(x:' +
+    nextXTile + ', y:' + nextYTile + ') vel.x:' + this.sprite.body.velocity.x +
+    ' vel.y:' + this.sprite.body.velocity.y + ' turning:' + this.turning +
+    ' turnpoint(x:' + this.turnPoint.x + ', y:' + this.turnPoint.y +
+    ') pass(l:' + this.tilePassable(this.directions[Phaser.LEFT]).toString()[0] +
+    ', u:' + this.tilePassable(this.directions[Phaser.UP]).toString()[0] +
+    ', r:' + this.tilePassable(this.directions[Phaser.RIGHT]).toString()[0] +
+    ', d:' + this.tilePassable(this.directions[Phaser.DOWN]).toString()[0] + ')' +
+    ', fm:' + this.frightenedMode.toString()[0] +
+    ', mode:' + this.mode);
+
+  if (this.turning !== Phaser.NONE) {
+    this.turn();
   }
 };
 
@@ -232,7 +289,7 @@ Server.prototype.turn = function() {
   this.sprite.body.velocity.x = this.sprite.body.velocity.y = 0;
 
   this.move(this.turning);
-  logOnLine(8, 'turnpoint executed at x:' + this.sprite.x + ' y:' + this.sprite.y + ' dir:' + directionEnum[this.turning]);
+  //logOnLine(8, 'turnpoint executed at x:' + this.sprite.x + ' y:' + this.sprite.y + ' dir:' + directionEnum[this.turning]);
   this.turning = Phaser.NONE;
 
   return true;
@@ -245,14 +302,15 @@ function logOnLine(line, message) {
   console.log(message);
 }
 
-Server.prototype.sendGameState = function(force) {
+Server.prototype.sendGameState = function() {
   var x = this.sprite.x,
     y = this.sprite.y,
     direction = this.current,
     alreadySent = ((this.sentX == x) && (this.sentY == y) && (this.sentDirection == direction));
 
-  if ((this.userSocket && !alreadySent) || force) {
-    logOnLine(5, 'sent game state y:' + y + ' x:' + x + ' direction:' + directionEnum[direction])
+  if ((this.userSocket && !alreadySent)) {
+
+    //logOnLine(5, 'sent game state y:' + y + ' x:' + x + ' direction:' + directionEnum[direction])
     io.emit('game state', {
       pacman: {
         x: x,
@@ -260,7 +318,7 @@ Server.prototype.sendGameState = function(force) {
         direction: direction
       },
       character: {
-        name: this.characterName,
+        name: this.name,
         id: this.userSocket.id
       }
     })
@@ -269,7 +327,6 @@ Server.prototype.sendGameState = function(force) {
     this.sentDirection = this.current;
   }
 }
-
 
 app.get('/', function(req, res) {
   res.sendfile('Pacman.html');
@@ -287,35 +344,43 @@ var characters = {},
 
 io.on('connection', function(socket) {
   characters[socket.id] = new Server(socket, characters, charPool.pop());
-  var serverGame = characters[socket.id];
-  // 6 updates per second, every 25 pixels (150/6=25)
-  // 1000/50 = 20 updates per second, every 7.5 pixels (150/20=7.5)
-  setInterval(serverGame.update.bind(serverGame), 53);
-  serverGame.move(Phaser.RIGHT);
+  var character = characters[socket.id];
+  character.move(Phaser.RIGHT);
+
+  // every time somebody connects - reset the map
+  pacmanMap = JSON.parse(fs.readFileSync('./assets/pacman-map.json', 'utf8')).layers[0].data;
 
   logActiveClientCount();
 
   socket.on('move', function(wantedDirection) {
-    var character = characters[socket.id];
-    logOnLine(debugLines[character.characterName] + 1, 'new direction: ' + directionEnum[wantedDirection] + ' x:' + character.sprite.x + ' y:' + character.sprite.y);
+    logOnLine(debugLines[character.name] + 1, 'new direction: ' + directionEnum[wantedDirection] + ' x:' + character.sprite.x + ' y:' + character.sprite.y);
     character.want2go = wantedDirection;
     character.checkDirection.bind(character)(character.want2go);
   });
 
   socket.on('disconnect', function() {
-    charPool.push(characters[socket.id].characterName);
+    charPool.push(character.name);
+    clearInterval(character.updateTimer);
     delete characters[socket.id];
     logActiveClientCount();
   });
 
-  serverGame.sendGameState(true);
+  // Send initial state
+  Object.keys(characters).forEach(function(key) {
+    var character = characters[key];
+    io.emit('game state', {
+      pacman: {
+        x: character.sprite.x,
+        y: character.sprite.y,
+        direction: character.current
+      },
+      character: {
+        name: character.name
+      }
+    })
+  })
 });
 
 function logActiveClientCount() {
   logOnLine(9, 'active connections: ' + Object.keys(characters).length);
 }
-
-
-
-
-//setInterval(clientUpdateLoop, 200);
