@@ -46,8 +46,6 @@ var Mode = {
 var FRIGHTENED_MODE_TIME = 7000;
 
 var Server = function(socket, characters, name) {
-  this.time = process.hrtime();
-
   this.speed = name === 'blinky' ? 125 : 150;
   this.isDead = false;
 
@@ -77,7 +75,11 @@ var Server = function(socket, characters, name) {
 
   // 6 updates per second, every 25 pixels (150/6=25)
   // 1000/50 = 20 updates per second, every 7.5 pixels (150/20=7.5)
-  this.updateTimer = setInterval(this.update.bind(this), 53);
+  var _this = this;
+  setTimeout(function() {
+    _this.time = process.hrtime();
+    _this.updateTimer = setInterval(_this.update.bind(_this), 53);
+  }, 4000)
 
   // Phaser structures
   this.game = {
@@ -343,6 +345,16 @@ var characters = {},
   charPool = ['blinky', 'pacman', 'pacman2'];
 
 io.on('connection', function(socket) {
+  io.emit('new game');
+
+  Object.keys(characters).forEach(function(key) {
+    var character = characters[key];
+    clearInterval(character.updateTimer);
+    characters[key] = new Server(character.userSocket, characters, character.name);
+    character.move(Phaser.RIGHT);
+  });
+
+
   characters[socket.id] = new Server(socket, characters, charPool.pop());
   var character = characters[socket.id];
   character.move(Phaser.RIGHT);
@@ -353,32 +365,21 @@ io.on('connection', function(socket) {
   logActiveClientCount();
 
   socket.on('move', function(wantedDirection) {
+    var character = characters[socket.id];
     logOnLine(debugLines[character.name] + 1, 'new direction: ' + directionEnum[wantedDirection] + ' x:' + character.sprite.x + ' y:' + character.sprite.y);
     character.want2go = wantedDirection;
     character.checkDirection.bind(character)(character.want2go);
   });
 
   socket.on('disconnect', function() {
+    var character = characters[socket.id];
     charPool.push(character.name);
     clearInterval(character.updateTimer);
+    logOnLine(debugLines[character.name], '');
+    logOnLine(debugLines[character.name] + 1, '');
     delete characters[socket.id];
     logActiveClientCount();
   });
-
-  // Send initial state
-  Object.keys(characters).forEach(function(key) {
-    var character = characters[key];
-    io.emit('game state', {
-      pacman: {
-        x: character.sprite.x,
-        y: character.sprite.y,
-        direction: character.current
-      },
-      character: {
-        name: character.name
-      }
-    })
-  })
 });
 
 function logActiveClientCount() {

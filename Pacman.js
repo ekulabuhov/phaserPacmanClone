@@ -34,7 +34,6 @@ var Pacman = function(game, key) {
   this.sprite.body.setSize(16, 16, 0, 0);
 
   this.sprite.play('munch');
-  this.move(Phaser.LEFT);
 };
 
 Pacman.prototype.move = function(direction) {

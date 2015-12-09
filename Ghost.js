@@ -37,7 +37,7 @@ var Ghost = function(game, key, name, startPos, startDir) {
   this.cruiseElroySpeed = 160;
   this.directions = [null, null, null, null, null];
   this.opposites = [Phaser.NONE, Phaser.RIGHT, Phaser.LEFT, Phaser.DOWN, Phaser.UP];
-  this.currentDir = startDir;
+  this.currentDir = 0;
 
   this.turnPoint = new Phaser.Point();
   this.lastPosition = {
@@ -85,8 +85,6 @@ var Ghost = function(game, key, name, startPos, startDir) {
 
   this.game.physics.arcade.enable(this.sprite);
   this.sprite.body.setSize(16, 16, 0, 0);
-
-  this.move(startDir);
 };
 
 Ghost.EXIT_HOME = "leaving_home";

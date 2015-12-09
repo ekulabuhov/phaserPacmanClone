@@ -19,6 +19,7 @@ var PacmanGame = function(game) {
   this.isInkyOut = false;
   this.isClydeOut = false;
   this.ghosts = [];
+  this.pacmans = [];
 
   this.player = null;
 
@@ -78,6 +79,7 @@ var PacmanGame = function(game) {
   this.lastKeyPressed = 0;
 
   this.game = game;
+  this.countDown = 3;
 };
 
 PacmanGame.prototype = {
@@ -112,21 +114,69 @@ PacmanGame.prototype = {
     var _this = this,
       socket = io();
 
+    socket.on('new game', function() {
+      _this.countDown = 3;
+      _this.dots.callAll('revive');
+      _this.pills.callAll('revive');
+      _this.score = 0;
+      _this.pacmans = [];
+      _this.ghosts = [];
+
+      if (_this.pacman2) {
+        _this.pacman2.sprite.destroy();
+        delete _this.pacman2;
+      }
+
+      if (_this.pacman) {
+        _this.pacman.sprite.destroy();
+        delete _this.pacman;
+      }
+
+      if (_this.blinky) {
+        _this.blinky.sprite.destroy();
+        delete _this.blinky;
+      }
+    });
+
     socket.on('game state', function(state) {
       console.log(JSON.stringify(state, null, 4));
       var character = _this[state.character.name];
+
+      if (!character) {
+        if (state.character.name === 'pacman') {
+          _this.pacman = new Pacman(_this, "pacman");
+          _this.pacmans.push(_this.pacman);
+        }
+
+        if (state.character.name === 'pacman2') {
+          _this.pacman2 = new Pacman(_this, "pacman");
+          _this.pacmans.push(_this.pacman2);
+        }
+
+        if (state.character.name === 'blinky') {
+          // Ghosts
+          _this.blinky = new Ghost(_this, "ghosts", "blinky", {
+            x: 13,
+            y: 11
+          }, Phaser.RIGHT);
+          // this.pinky = new Ghost(this, "ghosts", "pinky", {x:15, y:14}, Phaser.LEFT);
+          // this.inky = new Ghost(this, "ghosts", "inky", {x:14, y:14}, Phaser.RIGHT);
+          // this.clyde = new Ghost(this, "ghosts", "clyde", {x:17, y:14}, Phaser.LEFT);
+          //this.ghosts.push(this.clyde, this.pinky, this.inky, this.blinky);
+          _this.ghosts.push(_this.blinky);
+        }
+      }
+
+      character = _this[state.character.name];
+
       character.turnPoint.x = state.pacman.x;
       character.turnPoint.y = state.pacman.y;
       character.sprite.x = state.pacman.x;
       character.sprite.y = state.pacman.y;
-      character.turning = state.pacman.direction;   
+      character.turning = state.pacman.direction;
+      character.want2go = state.pacman.direction;
 
-      // hack-ish, checking for the first packet
-      if (!state.character.id) {
-        _this.dots.callAll('revive');
-        _this.pills.callAll('revive');
-        _this.score = 0;
-      }
+
 
       if (state.character.id === socket.id) {
         _this.player = _this[state.character.name];
@@ -158,11 +208,6 @@ PacmanGame.prototype = {
     //  Pacman should collide with everything except the safe tile
     this.map.setCollisionByExclusion([this.safetile], true, this.layer);
 
-    // Our hero
-    this.pacman = new Pacman(this, "pacman");
-    this.pacman2 = new Pacman(this, "pacman");
-    this.player = this.pacman;
-
     // Score and debug texts
     this.scoreText = game.add.text(8, 272, "Score: " + this.score, {
       fontSize: "16px",
@@ -176,6 +221,11 @@ PacmanGame.prototype = {
       fontSize: "12px",
       fill: "#fff"
     });
+    this.countDownText = game.add.text(224, 235, "", {
+      fontSize: "48px",
+      fill: "#fff"
+    });
+    this.countDownText.anchor.set(0.5);
 
     this.cursors = this.input.keyboard.createCursorKeys();
     this.cursors["d"] = this.input.keyboard.addKey(Phaser.Keyboard.D);
@@ -186,21 +236,15 @@ PacmanGame.prototype = {
 
     this.changeModeTimer = this.time.time + this.TIME_MODES[this.currentMode].time;
 
-    // Ghosts
-    this.blinky = new Ghost(this, "ghosts", "blinky", {x:13, y:11}, Phaser.RIGHT);
-    // this.pinky = new Ghost(this, "ghosts", "pinky", {x:15, y:14}, Phaser.LEFT);
-    // this.inky = new Ghost(this, "ghosts", "inky", {x:14, y:14}, Phaser.RIGHT);
-    // this.clyde = new Ghost(this, "ghosts", "clyde", {x:17, y:14}, Phaser.LEFT);
-    //this.ghosts.push(this.clyde, this.pinky, this.inky, this.blinky);
-    this.ghosts.push(this.blinky);
-
     // this.sendExitOrder(this.pinky);
     this.game.stage.disableVisibilityChange = true;
     this.setupNetworking();
   },
 
   checkKeys: function() {
-    this.player.checkKeys(this.cursors);
+    if (this.player) {
+      this.player.checkKeys(this.cursors);
+    }
 
     if (this.lastKeyPressed < this.time.time) {
       if (this.cursors.d.isDown) {
@@ -269,9 +313,11 @@ PacmanGame.prototype = {
       this.debugText.text = "";
     }
 
-    this.debugText.text = this.player.name + ": " + parseInt(this.player.sprite.x) + ' ' + parseInt(this.player.sprite.y) + ' ' + this.player.marker;
+    if (this.player) {
+      this.debugText.text = this.player.name + ": " + parseInt(this.player.sprite.x) + ' ' + parseInt(this.player.sprite.y) + ' ' + this.player.marker;
+    }
 
-    if (!this.pacman.isDead) {
+    if (this.pacman && !this.pacman.isDead) {
       for (var i = 0; i < this.ghosts.length; i++) {
         if (this.ghosts[i].mode !== this.ghosts[i].RETURNING_HOME) {
           this.physics.arcade.overlap(this.pacman.sprite, this.ghosts[i].sprite, this.dogEatsDog, null, this);
@@ -317,12 +363,30 @@ PacmanGame.prototype = {
       }
     }
 
-    this.pacman.update();
-    this.pacman2.update();
     this.updateGhosts();
 
     this.checkKeys();
     this.checkMouse();
+
+    if (this.countDown > 0) {
+      var _this = this;
+      this.countDownTimer = setInterval(function() {
+        if (_this.countDown === 0) {
+          clearInterval(_this.countDownTimer);
+          this.game.paused = false;
+          _this.countDownText.text = "";
+          return;
+        }
+        _this.countDown--;
+        if (_this.countDown > 0) {
+          _this.countDownText.text = _this.countDown;
+        } else {
+          _this.countDownText.text = 'Go!';
+        }
+      }, 1000)
+      this.game.paused = true;
+      this.countDownText.text = this.countDown;
+    }
   },
 
   enterFrightenedMode: function() {
@@ -347,6 +411,10 @@ PacmanGame.prototype = {
   },
 
   updateGhosts: function() {
+    for (var i = 0; i < this.pacmans.length; i++) {
+      this.pacmans[i].update();
+    }
+
     for (var i = 0; i < this.ghosts.length; i++) {
       this.ghosts[i].update();
     }
