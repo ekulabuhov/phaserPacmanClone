@@ -1,9 +1,14 @@
-var fs = require('fs');
-var express = require('express');
-var app = express();
-var http = require('http').Server(app);
-var io = require('socket.io')(http);
-var pacmanMap = JSON.parse(fs.readFileSync('./assets/pacman-map.json', 'utf8')).layers[0].data;
+var fs = require('fs'),
+  express = require('express'),
+  app = express(),
+  server = require('http').createServer(app),
+  io = require('socket.io').listen(server),
+  pacmanMap = JSON.parse(fs.readFileSync('./assets/pacman-map.json', 'utf8')).layers[0].data;
+
+server.listen(process.env.PORT || 3000, function() {
+  console.log('\033[2J'); // clear screen
+  console.log('listening on *:' + server.address().port);
+});
 
 var debugLines = {
   'blinky': 2,
@@ -332,11 +337,6 @@ Server.prototype.sendGameState = function() {
 
 app.get('/', function(req, res) {
   res.sendfile('Pacman.html');
-});
-
-http.listen(3000, function() {
-  console.log('\033[2J'); // clear screen
-  console.log('listening on *:3000');
 });
 
 app.use(express.static('.'));
