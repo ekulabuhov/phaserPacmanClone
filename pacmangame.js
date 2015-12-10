@@ -80,6 +80,14 @@ var PacmanGame = function(game) {
 
   this.game = game;
   this.countDown = 3;
+  this.isTouchDevice = 'ontouchstart' in document.documentElement;
+
+  this.touchControls = {
+    up: false,
+    down: false,
+    right: false,
+    left: false
+  };
 };
 
 PacmanGame.prototype = {
@@ -92,6 +100,33 @@ PacmanGame.prototype = {
     Phaser.Canvas.setImageRenderingCrisp(this.game.canvas); // full retro mode, i guess ;)
 
     this.physics.startSystem(Phaser.Physics.ARCADE);
+
+    var _this = this;
+    document.getElementById('upArrow').addEventListener('touchstart', function() {
+      _this.touchControls.up = true;
+    });
+    document.getElementById('downArrow').addEventListener('touchstart', function() {
+      _this.touchControls.down = true;
+    });
+    document.getElementById('rightArrow').addEventListener('touchstart', function() {
+      _this.touchControls.right = true;
+    });
+    document.getElementById('leftArrow').addEventListener('touchstart', function() {
+      _this.touchControls.left = true;
+    });
+
+    document.getElementById('upArrow').addEventListener('touchend', function() {
+      _this.touchControls.up = false;
+    });
+    document.getElementById('downArrow').addEventListener('touchend', function() {
+      _this.touchControls.down = false;
+    });
+    document.getElementById('rightArrow').addEventListener('touchend', function() {
+      _this.touchControls.right = false;
+    });
+    document.getElementById('leftArrow').addEventListener('touchend', function() {
+      _this.touchControls.left = false;
+    });
   },
 
   preload: function() {
@@ -230,6 +265,10 @@ PacmanGame.prototype = {
     this.cursors = this.input.keyboard.createCursorKeys();
     this.cursors["d"] = this.input.keyboard.addKey(Phaser.Keyboard.D);
     this.cursors["b"] = this.input.keyboard.addKey(Phaser.Keyboard.B);
+    this.cursors["t"] = this.input.keyboard.addKey(Phaser.Keyboard.T);
+    this.cursors["t"].onDown.add(function() {
+      this.isTouchDevice = !this.isTouchDevice;
+    }, this);
 
     // this.game.time.events.add(1250, this.sendExitOrder, this);
     // this.game.time.events.add(7000, this.sendAttackOrder, this);
@@ -243,6 +282,12 @@ PacmanGame.prototype = {
 
   checkKeys: function() {
     if (this.player) {
+      if (this.isTouchDevice) {
+        this.cursors.down.isDown = this.touchControls.down;
+        this.cursors.up.isDown = this.touchControls.up;
+        this.cursors.right.isDown = this.touchControls.right;
+        this.cursors.left.isDown = this.touchControls.left;
+      }
       this.player.checkKeys(this.cursors);
     }
 
@@ -387,6 +432,11 @@ PacmanGame.prototype = {
       this.game.paused = true;
       this.countDownText.text = this.countDown;
     }
+
+    document.getElementById('upArrow').style.display = this.isTouchDevice ? 'block' : 'none';
+    document.getElementById('downArrow').style.display = this.isTouchDevice ? 'block' : 'none';
+    document.getElementById('rightArrow').style.display = this.isTouchDevice ? 'block' : 'none';
+    document.getElementById('leftArrow').style.display = this.isTouchDevice ? 'block' : 'none';
   },
 
   enterFrightenedMode: function() {
