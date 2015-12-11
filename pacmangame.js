@@ -179,12 +179,13 @@ PacmanGame.prototype = {
 
       if (!character) {
         if (state.character.name === 'pacman') {
-          _this.pacman = new Pacman(_this, "pacman");
+          _this.pacman = new Pacman(_this, "pacman", 'pacman');
+          _this.pacman.sprite.tint = 0xFF00;
           _this.pacmans.push(_this.pacman);
         }
 
         if (state.character.name === 'pacman2') {
-          _this.pacman2 = new Pacman(_this, "pacman");
+          _this.pacman2 = new Pacman(_this, "pacman", 'pacman2');
           _this.pacmans.push(_this.pacman2);
         }
 
@@ -194,22 +195,35 @@ PacmanGame.prototype = {
             x: 13,
             y: 11
           }, Phaser.RIGHT);
+          _this.blinky.move(Phaser.RIGHT);
           // this.pinky = new Ghost(this, "ghosts", "pinky", {x:15, y:14}, Phaser.LEFT);
           // this.inky = new Ghost(this, "ghosts", "inky", {x:14, y:14}, Phaser.RIGHT);
           // this.clyde = new Ghost(this, "ghosts", "clyde", {x:17, y:14}, Phaser.LEFT);
           //this.ghosts.push(this.clyde, this.pinky, this.inky, this.blinky);
           _this.ghosts.push(_this.blinky);
         }
+        
+        character = _this[state.character.name];
+
+        character.turnPoint.x = state.pacman.x;
+        character.turnPoint.y = state.pacman.y;
+        character.sprite.x = state.pacman.x;
+        character.sprite.y = state.pacman.y;
+        character.turning = state.pacman.direction;
+        character.want2go = state.pacman.direction;
       }
 
-      character = _this[state.character.name];
+      if (state.character.id !== socket.id) {
 
-      character.turnPoint.x = state.pacman.x;
-      character.turnPoint.y = state.pacman.y;
-      character.sprite.x = state.pacman.x;
-      character.sprite.y = state.pacman.y;
-      character.turning = state.pacman.direction;
-      character.want2go = state.pacman.direction;
+        character = _this[state.character.name];
+
+        character.turnPoint.x = state.pacman.x;
+        character.turnPoint.y = state.pacman.y;
+        character.sprite.x = state.pacman.x;
+        character.sprite.y = state.pacman.y;
+        character.turning = state.pacman.direction;
+        character.want2go = state.pacman.direction;
+      }
 
 
 
@@ -319,7 +333,7 @@ PacmanGame.prototype = {
       this[ghost.name].resetSafeTiles();
       this.score += 10;
     } else {
-      this.killPacman();
+      this.killPacman(pacman);
     }
   },
 
@@ -339,8 +353,8 @@ PacmanGame.prototype = {
     this.game.time.events.add(3000, this.sendExitOrder, this, ghost);
   },
 
-  killPacman: function() {
-    this.pacman.isDead = true;
+  killPacman: function(pacman) {
+    this[pacman.name].isDead = true;
     this.stopGhosts();
   },
 
@@ -365,7 +379,9 @@ PacmanGame.prototype = {
     if (this.pacman && !this.pacman.isDead) {
       for (var i = 0; i < this.ghosts.length; i++) {
         if (this.ghosts[i].mode !== this.ghosts[i].RETURNING_HOME) {
-          this.physics.arcade.overlap(this.pacman.sprite, this.ghosts[i].sprite, this.dogEatsDog, null, this);
+          for (var j = 0; j < this.pacmans.length; j++) {
+            this.physics.arcade.overlap(this.pacmans[j].sprite, this.ghosts[i].sprite, this.dogEatsDog, null, this);
+          }
         }
       }
 

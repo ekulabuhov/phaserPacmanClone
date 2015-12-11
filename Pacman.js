@@ -1,6 +1,7 @@
-var Pacman = function(game, key) {
+var Pacman = function(game, key, name) {
   this.game = game;
   this.key = key;
+  this.name = name;
 
   this.speed = 150;
   this.isDead = false;
@@ -29,6 +30,7 @@ var Pacman = function(game, key) {
   this.sprite.anchor.setTo(0.5);
   this.sprite.animations.add('munch', [0, 1, 2, 1], 20, true);
   this.sprite.animations.add("death", [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], 10, false);
+  this.sprite.name = name;
 
   this.game.physics.arcade.enable(this.sprite);
   this.sprite.body.setSize(16, 16, 0, 0);
@@ -72,9 +74,13 @@ Pacman.prototype.move = function(direction) {
 
     // we only want to send packets for our own char
     if (this.game.socket && this.game.player === this) {
-      this.game.socket.emit('move', this.current);  
+      this.game.socket.emit('move', {
+        x: this.sprite.x,
+        y: this.sprite.y,
+        direction: this.current
+      });
     }
-  }  
+  }
 };
 
 Pacman.prototype.update = function() {

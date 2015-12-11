@@ -485,7 +485,11 @@ Ghost.prototype = {
       // we only want to send packets for our own char
       if (this.game.socket && this.game.player === this && this.mode !== this.AT_HOME && this.mode !== this.EXIT_HOME) {
         var currentTime = performance.now();
-        this.game.socket.emit('move', this.currentDir);
+        this.game.socket.emit('move', {
+          x: this.sprite.x,
+          y: this.sprite.y,
+          direction: this.currentDir
+        });
       }
     }
 

@@ -16,21 +16,6 @@ var debugLines = {
   'pacman2': 8,
 }
 
-var startingLocations = {
-  'blinky': {
-    x: 13,
-    y: 11
-  },
-  'pacman': {
-    x: 14,
-    y: 17
-  },
-  'pacman2': {
-    x: 14,
-    y: 17
-  }
-}
-
 var Phaser = {
   NONE: 0,
   LEFT: 1,
@@ -40,6 +25,24 @@ var Phaser = {
   Point: function() {
     this.x = 0;
     this.y = 0;
+  }
+}
+
+var startingLocations = {
+  'blinky': {
+    x: 13,
+    y: 11,
+    direction: Phaser.RIGHT
+  },
+  'pacman': {
+    x: 14,
+    y: 17,
+    direction: Phaser.RIGHT
+  },
+  'pacman2': {
+    x: 14,
+    y: 17,
+    direction: Phaser.LEFT
   }
 }
 
@@ -191,24 +194,7 @@ Server.prototype.update = function() {
   }
 
   //this.game.physics.arcade.collide(this.sprite, this.game.layer);
-  var nextSpriteX = this.sprite.x + Math.round(this.sprite.body.velocity.x / 1000 * diffInMs),
-    nextSpriteY = this.sprite.y + Math.round(this.sprite.body.velocity.y / 1000 * diffInMs),
-    nextXTile = Math.round((nextSpriteX + this.sprite.body.velocity.x / 18.75 - 0.1) / 16),
-    nextYTile = Math.round((nextSpriteY + this.sprite.body.velocity.y / 18.75 - 0.1) / 16),
-    nextTile = pacmanMap[nextYTile * 28 + nextXTile],
-    wrapAround = (nextXTile <= 0 || nextXTile >= 28) && nextYTile == 14;
-  nextTilePassable = wrapAround || this.tilePassable(nextTile);
 
-  if (nextTilePassable) {
-    this.sprite.x = nextSpriteX;
-    this.sprite.y = nextSpriteY;
-  } else {
-    this.sprite.body.velocity.y = this.sprite.body.velocity.x = 0;
-    //console.log('update1! ' + this.sprite.x + ' tx:' + nextTile);
-    this.sprite.x = Math.round((this.sprite.x - 0.1) / 16) * 16 + 8;
-    //console.log('update2! ' + this.sprite.x);
-    this.sprite.y = Math.round((this.sprite.y - 0.1) / 16) * 16 + 8;
-  }
 
   //this.game.physics.arcade.overlap(this.sprite, this.game.dots, this.eatDot, null, this);
   //this.game.physics.arcade.overlap(this.sprite, this.game.pills, this.eatPill, null, this);
@@ -269,6 +255,25 @@ Server.prototype.update = function() {
 
   if (this.turning !== Phaser.NONE) {
     this.turn();
+  }
+
+  var nextSpriteX = this.sprite.x + Math.round(this.sprite.body.velocity.x / 1000 * diffInMs),
+    nextSpriteY = this.sprite.y + Math.round(this.sprite.body.velocity.y / 1000 * diffInMs),
+    nextXTile = Math.round((nextSpriteX + this.sprite.body.velocity.x / 18.75 - 0.1) / 16),
+    nextYTile = Math.round((nextSpriteY + this.sprite.body.velocity.y / 18.75 - 0.1) / 16),
+    nextTile = pacmanMap[nextYTile * 28 + nextXTile],
+    wrapAround = (nextXTile <= 0 || nextXTile >= 28) && nextYTile == 14;
+  nextTilePassable = wrapAround || this.tilePassable(nextTile);
+
+  if (nextTilePassable) {
+    this.sprite.x = nextSpriteX;
+    this.sprite.y = nextSpriteY;
+  } else {
+    this.sprite.body.velocity.y = this.sprite.body.velocity.x = 0;
+    //console.log('update1! ' + this.sprite.x + ' tx:' + nextTile);
+    this.sprite.x = Math.round((this.sprite.x - 0.1) / 16) * 16 + 8;
+    //console.log('update2! ' + this.sprite.x);
+    this.sprite.y = Math.round((this.sprite.y - 0.1) / 16) * 16 + 8;
   }
 };
 
@@ -351,23 +356,25 @@ io.on('connection', function(socket) {
     var character = characters[key];
     clearInterval(character.updateTimer);
     characters[key] = new Server(character.userSocket, characters, character.name);
-    character.move(Phaser.RIGHT);
+    characters[key].move(startingLocations[character.name].direction);
   });
 
 
   characters[socket.id] = new Server(socket, characters, charPool.pop());
   var character = characters[socket.id];
-  character.move(Phaser.RIGHT);
+  character.move(startingLocations[character.name].direction);
 
   // every time somebody connects - reset the map
   pacmanMap = JSON.parse(fs.readFileSync('./assets/pacman-map.json', 'utf8')).layers[0].data;
 
   logActiveClientCount();
 
-  socket.on('move', function(wantedDirection) {
+  socket.on('move', function(state) {
     var character = characters[socket.id];
-    logOnLine(debugLines[character.name] + 1, 'new direction: ' + directionEnum[wantedDirection] + ' x:' + character.sprite.x + ' y:' + character.sprite.y);
-    character.want2go = wantedDirection;
+    logOnLine(debugLines[character.name] + 1, 'new direction: ' + directionEnum[state.direction] + ' x:' + character.sprite.x + ' y:' + character.sprite.y);
+    character.sprite.x = state.x;
+    character.sprite.y = state.y;
+    character.want2go = state.direction;
     character.checkDirection.bind(character)(character.want2go);
   });
 
