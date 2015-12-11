@@ -276,6 +276,18 @@ PacmanGame.prototype = {
         if (state.character.name === 'blinky') {
           _this.avatar = _this.game.add.sprite((24 * 16) + 8, (17 * 16) - 8, 'ghosts', 12);
         }
+
+        if (state.character.name === 'pinky') {
+          _this.avatar = _this.game.add.sprite((24 * 16) + 8, (17 * 16) - 8, 'ghosts', 8);
+        }
+
+        if (state.character.name === 'inky') {
+          _this.avatar = _this.game.add.sprite((24 * 16) + 8, (17 * 16) - 8, 'ghosts', 0);
+        }
+
+        if (state.character.name === 'clyde') {
+          _this.avatar = _this.game.add.sprite((24 * 16) + 8, (17 * 16) - 8, 'ghosts', 4);
+        }
       }
     });
 
