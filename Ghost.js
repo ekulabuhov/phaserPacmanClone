@@ -88,6 +88,7 @@ var Ghost = function(game, key, name, startPos, startDir) {
 };
 
 Ghost.EXIT_HOME = "leaving_home";
+Ghost.CHASE = "chase";
 
 Ghost.prototype = {
   update: function() {

@@ -14,6 +14,9 @@ var debugLines = {
   'blinky': 2,
   'pacman': 5,
   'pacman2': 8,
+  'pinky': 11,
+  'inky': 14,
+  'clyde': 17
 }
 
 var Phaser = {
@@ -28,21 +31,44 @@ var Phaser = {
   }
 }
 
+var ghosts = ['blinky', 'pinky', 'inky', 'clyde'];
+
 var startingLocations = {
   'blinky': {
     x: 13,
     y: 11,
-    direction: Phaser.RIGHT
+    direction: Phaser.RIGHT,
+    speed: 125
+  },
+  'pinky': {
+    x: 11,
+    y: 11,
+    direction: Phaser.LEFT,
+    speed: 125
+  },
+  'inky': {
+    x: 9,
+    y: 11,
+    direction: Phaser.RIGHT,
+    speed: 125
+  },
+  'clyde': {
+    x: 15,
+    y: 11,
+    direction: Phaser.RIGHT,
+    speed: 125
   },
   'pacman': {
     x: 14,
     y: 17,
-    direction: Phaser.RIGHT
+    direction: Phaser.RIGHT,
+    speed: 150
   },
   'pacman2': {
     x: 14,
     y: 17,
-    direction: Phaser.LEFT
+    direction: Phaser.LEFT,
+    speed: 150
   }
 }
 
@@ -54,7 +80,7 @@ var Mode = {
 var FRIGHTENED_MODE_TIME = 7000;
 
 var Server = function(socket, characters, name) {
-  this.speed = name === 'blinky' ? 125 : 150;
+  this.speed = startingLocations[name].speed;
   this.isDead = false;
 
   this.gridsize = 16; // this.game.gridsize;
@@ -207,7 +233,7 @@ Server.prototype.update = function() {
     var _this = this;
     Object.keys(this.characters).forEach(function(socketId) {
       var character = _this.characters[socketId];
-      if (character.name === 'blinky' && fuzzyEqual(_this.marker.x, character.marker.x, 2) &&
+      if (ghosts.indexOf(character.name) != -1 && fuzzyEqual(_this.marker.x, character.marker.x, 2) &&
         fuzzyEqual(_this.marker.y, character.marker.y, 2)) {
         if (_this.frightenedMode) {
           character.mode = Mode.RETURNING_HOME;
@@ -347,7 +373,7 @@ app.get('/', function(req, res) {
 app.use(express.static('.'));
 
 var characters = {},
-  charPool = ['pacman2', 'pacman', 'blinky'];
+  charPool = ['pinky', 'pacman2', 'pacman', 'blinky'];
 
 io.on('connection', function(socket) {
   io.emit('new game');
