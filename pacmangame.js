@@ -176,6 +176,11 @@ PacmanGame.prototype = {
         _this.pinky.sprite.destroy();
         delete _this.pinky;
       }
+
+      if (_this.inky) {
+        _this.inky.sprite.destroy();
+        delete _this.inky;
+      }
     });
 
     socket.on('game state', function(state) {
@@ -202,7 +207,6 @@ PacmanGame.prototype = {
           }, Phaser.RIGHT);
           _this.blinky.move(Phaser.RIGHT);
           
-          // this.inky = new Ghost(this, "ghosts", "inky", {x:14, y:14}, Phaser.RIGHT);
           // this.clyde = new Ghost(this, "ghosts", "clyde", {x:17, y:14}, Phaser.LEFT);
           //this.ghosts.push(this.clyde, this.pinky, this.inky, this.blinky);
           _this.ghosts.push(_this.blinky);
@@ -213,6 +217,13 @@ PacmanGame.prototype = {
           _this.pinky.mode = Ghost.CHASE;
           _this.pinky.move(Phaser.LEFT);
           _this.ghosts.push(_this.pinky);
+        }
+
+        if (state.character.name === 'inky') {
+          _this.inky = new Ghost(_this, "ghosts", "inky", {x:9, y:11}, Phaser.RIGHT);
+          _this.inky.mode = Ghost.CHASE;
+          _this.inky.move(Phaser.LEFT);
+          _this.ghosts.push(_this.inky);
         }
 
         character = _this[state.character.name];

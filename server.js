@@ -373,7 +373,7 @@ app.get('/', function(req, res) {
 app.use(express.static('.'));
 
 var characters = {},
-  charPool = ['pinky', 'pacman2', 'pacman', 'blinky'];
+  charPool = ['inky','pinky', 'pacman2', 'pacman', 'blinky'];
 
 io.on('connection', function(socket) {
   io.emit('new game');
