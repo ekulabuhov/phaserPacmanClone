@@ -108,11 +108,21 @@ Pacman.prototype.update = function() {
     if (this.turning !== Phaser.NONE) {
       this.turn();
     }
-  } else {
+  } 
+
+  if (this.isDead) {
     this.move(Phaser.NONE);
     if (!this.isAnimatingDeath) {
       this.sprite.play("death");
       this.isAnimatingDeath = true;
+      var _this = this;
+      setTimeout(function() {
+        _this.sprite.x = (14 * 16) + 8;
+        _this.sprite.y = (17 * 16) + 8;
+        _this.sprite.play('munch');
+        _this.isDead = false;
+        _this.isAnimatingDeath = false;
+      }, 3000)
     }
   }
 };
