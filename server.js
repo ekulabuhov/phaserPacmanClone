@@ -373,9 +373,14 @@ app.get('/', function(req, res) {
 app.use(express.static('.'));
 
 var characters = {},
-  charPool = ['inky','pinky', 'pacman2', 'pacman', 'blinky'];
+  charPool = ['clyde', 'inky', 'pinky', 'pacman2', 'pacman', 'blinky'];
 
 io.on('connection', function(socket) {
+  if (Object.keys(characters).length === 6) {
+    socket.disconnect(true);
+    return;
+  }
+
   io.emit('new game');
 
   Object.keys(characters).forEach(function(key) {
